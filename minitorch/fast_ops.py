@@ -310,12 +310,14 @@ def tensor_reduce(
             out_index = np.zeros_like(out_shape)
             to_index(i, out_shape, out_index)
             out_position = index_to_position(out_index, out_strides)
+            accumulator = out[out_position]
+            funky_position = index_to_position(out_index, a_strides)
+            step = a_strides[reduce_dim]
             red_dim_size = a_shape[reduce_dim]
-            for j in range(red_dim_size):
-                a_index = out_index[:]
-                a_index[reduce_dim] = j
-                a_value = a_storage[index_to_position(a_index, a_strides)]
-                out[out_position] = fn(a_value, out[out_position])
+            for _ in range(red_dim_size):
+                accumulator = fn(accumulator, a_storage[funky_position])
+                funky_position += step
+            out[out_position] = accumulator
 
     return njit(_reduce, parallel=True)  # type: ignore
 
