@@ -123,6 +123,8 @@ def render_run_sentiment_interface():
             train_accuracy,
             validation_predictions,
             validation_accuracy,
+            _epoch_time,
+            _save_to_file_path=None,
         ):
             time_elapsed = time.time() - start_time
             st_progress.progress(epoch / max_epochs)

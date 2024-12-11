@@ -41,9 +41,8 @@ class Conv2d(minitorch.Module):
         self.bias = RParam(out_channels, 1, 1)
 
     def forward(self, input):
-        # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
-
+        #we have implemented conv 2d in fast_conv.py so we can use it here
+        return minitorch.conv2d(input, self.weights.value) + self.bias.value
 
 class Network(minitorch.Module):
     """
@@ -66,14 +65,24 @@ class Network(minitorch.Module):
         # For vis
         self.mid = None
         self.out = None
-
-        # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        self.conv1 = Conv2d(1, 4, 3, 3) #1 input channel, 4 output channels, 3x3 kernel
+        self.conv2 = Conv2d(4, 8, 3, 3) #4 input channel, 8 output channels, 3x3 kernel
+        self.linear1 = Linear(392, 64) #392 input size, 64 output size
+        self.linear2 = Linear(64, C) #64 input size, C output size
+        self.dropout_prob = 0.25
 
     def forward(self, x):
-        # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
-
+        conv1_out = self.conv1(x)
+        self.mid = conv1_out
+        conv2_out = self.conv2(conv1_out)
+        self.out = conv2_out
+        pool_out = minitorch.avgpool2d(conv2_out, (4, 4))
+        flat_out = pool_out.view(pool_out.shape[0], 392)
+        linear1_out = self.linear1(flat_out).relu()
+        linear1_dropout = minitorch.dropout(linear1_out, self.dropout_prob)
+        linear2_out = self.linear2(linear1_dropout)
+        lsm = minitorch.logsoftmax(linear2_out, 1)
+        return lsm
 
 def make_mnist(start, stop):
     ys = []
@@ -87,9 +96,12 @@ def make_mnist(start, stop):
     return X, ys
 
 
-def default_log_fn(epoch, total_loss, correct, total, losses, model):
-    print(f"Epoch {epoch} loss {total_loss} valid acc {correct}/{total}")
-
+def default_log_fn_MNIST(epoch, total_loss, correct, total, losses, model,write_to_file=None):
+    s_to_print = (f"Epoch {epoch} Loss {total_loss}, Validation Accuracy {correct}/{total}\n")
+    print(s_to_print, end="")
+    if write_to_file is not None:
+        with open(write_to_file, "a") as f:
+            f.write(s_to_print)
 
 class ImageTrain:
     def __init__(self):
@@ -99,7 +111,7 @@ class ImageTrain:
         return self.model.forward(minitorch.tensor([x], backend=BACKEND))
 
     def train(
-        self, data_train, data_val, learning_rate, max_epochs=500, log_fn=default_log_fn
+        self, data_train, data_val, learning_rate, max_epochs=500, log_fn=default_log_fn_MNIST
     ):
         (X_train, y_train) = data_train
         (X_val, y_val) = data_val
@@ -108,6 +120,7 @@ class ImageTrain:
         n_training_samples = len(X_train)
         optim = minitorch.SGD(self.model.parameters(), learning_rate)
         losses = []
+        print("Training model now!")
         for epoch in range(1, max_epochs + 1):
             total_loss = 0.0
 
@@ -163,8 +176,7 @@ class ImageTrain:
                                     m = out[i, j]
                             if y[i, ind] == 1.0:
                                 correct += 1
-                    log_fn(epoch, total_loss, correct, BATCH, losses, model)
-
+                    log_fn(epoch, total_loss, correct, BATCH, losses, model,'mnist_log.txt')
                     total_loss = 0.0
                     model.train()
 

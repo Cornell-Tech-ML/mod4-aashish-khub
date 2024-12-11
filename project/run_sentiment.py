@@ -1,7 +1,7 @@
 import random
 
 import embeddings
-
+import time
 import minitorch
 from datasets import load_dataset
 
@@ -34,9 +34,8 @@ class Conv1d(minitorch.Module):
         self.bias = RParam(1, out_channels, 1)
 
     def forward(self, input):
-        # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
-
+        #we have implemented conv 1d in fast_conv.py so we can use it here
+        return minitorch.conv1d(input, self.weights.value) + self.bias.value
 
 class CNNSentimentKim(minitorch.Module):
     """
@@ -61,16 +60,44 @@ class CNNSentimentKim(minitorch.Module):
     ):
         super().__init__()
         self.feature_map_size = feature_map_size
-        # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        self.embedding_size = embedding_size
+        self.filter_sizes = filter_sizes
+        self.dropout = dropout
+
+        self.conv1 = Conv1d(embedding_size, feature_map_size, filter_sizes[0]) #kw = 3
+        self.conv2 = Conv1d(embedding_size, feature_map_size, filter_sizes[1]) #kw = 4
+        self.conv3 = Conv1d(embedding_size, feature_map_size, filter_sizes[2]) #kw = 5
+        self.linear = Linear(feature_map_size, 1) #3 is the number of filter sizes
+        # self.maxpooler = minitorch.MaxPool2d((1, 3)) #maxpooling over the feature map size
+        self.dropout_prob = dropout
+        self.training = True
 
     def forward(self, embeddings):
         """
         embeddings tensor: [batch x sentence length x embedding dim]
         """
-        # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        input = embeddings.permute(0, 2, 1) #shape is batch x embedding dim x sentence length
 
+        conv1 = self.conv1(input).relu()
+        #get max over time for each feature map
+        conv1_max = minitorch.nn.max(conv1, 2)
+
+        conv2 = self.conv2(input).relu()
+        conv2_max = minitorch.nn.max(conv2, 2)
+
+        conv3 = self.conv3(input).relu()
+        conv3_max = minitorch.nn.max(conv3, 2)
+
+        #each of the above _max tensors is of shape batch x feature_map_size x 1
+        #sum them up and then squeeze to get batch x feature_map_size.
+        max_over_time = (conv1_max + conv2_max + conv3_max)
+        max_over_time = max_over_time.view(max_over_time.shape[0], max_over_time.shape[1])
+
+        final = self.linear(max_over_time)
+        final = minitorch.nn.dropout(final, self.dropout_prob, not self.training)
+        final = final.sigmoid().view(input.shape[0])
+
+        return final
 
 # Evaluation helper methods
 def get_predictions_array(y_true, model_output):
@@ -104,16 +131,23 @@ def default_log_fn(
     train_accuracy,
     validation_predictions,
     validation_accuracy,
+    epoch_time,
+    save_to_file_path=None,
 ):
     global best_val
     best_val = (
         best_val if best_val > validation_accuracy[-1] else validation_accuracy[-1]
     )
-    print(f"Epoch {epoch}, loss {train_loss}, train accuracy: {train_accuracy[-1]:.2%}")
+    s_to_print = ""
+    s_to_print += f"Epoch {epoch}\nLoss: {train_loss}\nTrain accuracy: {train_accuracy[-1]:.2%}\nTime taken: {epoch_time:.2f}s\n"
     if len(validation_predictions) > 0:
-        print(f"Validation accuracy: {validation_accuracy[-1]:.2%}")
-        print(f"Best Valid accuracy: {best_val:.2%}")
-
+        s_to_print += (f"Validation accuracy: {validation_accuracy[-1]:.2%}\n")
+        s_to_print += (f"Best Valid accuracy: {best_val:.2%}")
+    s_to_print += "\n"
+    print(s_to_print)
+    if save_to_file_path is not None:
+        with open(save_to_file_path, "a") as f:
+            f.write(s_to_print)
 
 class SentenceSentimentTrain:
     def __init__(self, model):
@@ -137,7 +171,7 @@ class SentenceSentimentTrain:
         validation_accuracy = []
         for epoch in range(1, max_epochs + 1):
             total_loss = 0.0
-
+            time_start = time.time()
             model.train()
             train_predictions = []
             batch_size = min(batch_size, n_training_samples)
@@ -185,6 +219,8 @@ class SentenceSentimentTrain:
 
             train_accuracy.append(get_accuracy(train_predictions))
             losses.append(total_loss)
+            time_end = time.time()
+            epoch_time = time_end - time_start
             log_fn(
                 epoch,
                 total_loss,
@@ -193,6 +229,8 @@ class SentenceSentimentTrain:
                 train_accuracy,
                 validation_predictions,
                 validation_accuracy,
+                epoch_time,
+                'sentiment_log.txt',
             )
             total_loss = 0.0
 
@@ -251,7 +289,6 @@ def encode_sentiment_data(dataset, pretrained_embeddings, N_train, N_val=0):
 
     return (X_train, y_train), (X_val, y_val)
 
-
 if __name__ == "__main__":
     train_size = 450
     validation_size = 100
@@ -267,6 +304,7 @@ if __name__ == "__main__":
     model_trainer = SentenceSentimentTrain(
         CNNSentimentKim(feature_map_size=100, filter_sizes=[3, 4, 5], dropout=0.25)
     )
+    print("Training model now!")
     model_trainer.train(
         (X_train, y_train),
         learning_rate,

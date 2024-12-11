@@ -31,8 +31,39 @@ def test_avg(t: Tensor) -> None:
 @pytest.mark.task4_4
 @given(tensors(shape=(2, 3, 4)))
 def test_max(t: Tensor) -> None:
-    # TODO: Implement for Task 4.4.
-    raise NotImplementedError("Need to implement for Task 4.4")
+    depth, height, width = t.shape
+
+    def _check_dim(dim: int) -> None:
+        out = minitorch.max(t, dim)
+        expected_shape = list(t.shape)
+        expected_shape[dim] = 1
+        assert out.shape == tuple(expected_shape)
+
+        for idx in out._tensor.indices():
+            max_val = out[idx]
+            values = []
+            for i in range(t.shape[dim]):
+                pos = list(idx)
+                pos[dim] = i
+                values.append(t[tuple(pos)])
+            assert_close(max_val, max(values))
+
+    _check_dim(0)
+    _check_dim(1)
+    _check_dim(2)
+    # Test autograd functionality
+    t.requires_grad_(True)
+    out = minitorch.max(t, 1)
+    out.sum().backward()
+    assert t.grad is not None
+    for i in range(depth):
+        for k in range(width):
+            max_val_a_priori = max([t[i, j, k] for j in range(height)])
+            for j in range(height):
+                t_here = t[i, j, k]
+                t_prime_here = t.grad[i, j, k]
+                expected_value = 1.0 if t_here == max_val_a_priori else 0.0
+                assert_close(t_prime_here, expected_value)
 
 
 @pytest.mark.task4_4

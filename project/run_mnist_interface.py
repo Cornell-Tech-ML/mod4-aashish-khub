@@ -46,7 +46,7 @@ def render_run_image_interface():
         start_time = time.time()
         train = ImageTrain()
 
-        def log_fn(epoch, total_loss, correct, losses, model):
+        def log_fn(epoch, total_loss, correct, BATCH, losses, model, _write_to_file=None):
             time_elapsed = time.time() - start_time
             st_progress.progress(epoch / max_epochs)
             time_per_epoch = time_elapsed / (epoch + 1)
