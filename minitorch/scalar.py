@@ -76,6 +76,9 @@ class Scalar:
     def __mul__(self, b: ScalarLike) -> Scalar:
         return Mul.apply(self, b)
 
+    def __rmul__(self, b: ScalarLike) -> Scalar:
+        return self * b
+
     def __truediv__(self, b: ScalarLike) -> Scalar:
         return Mul.apply(self, Inv.apply(b))
 
@@ -85,11 +88,45 @@ class Scalar:
     def __bool__(self) -> bool:
         return bool(self.data)
 
+    def __add__(self, b: ScalarLike) -> Scalar:
+        return Add.apply(self, b)
+
     def __radd__(self, b: ScalarLike) -> Scalar:
         return self + b
 
-    def __rmul__(self, b: ScalarLike) -> Scalar:
-        return self * b
+    def __neg__(self) -> Scalar:
+        return Neg.apply(self)
+
+    def __sub__(self, b: ScalarLike) -> Scalar:
+        return Add.apply(self, -b)
+
+    def __rsub__(self, b: ScalarLike) -> Scalar:
+        return Add.apply(b, -self)
+
+    def __lt__(self, b: ScalarLike) -> Scalar:
+        return LT.apply(self, b)
+
+    def __eq__(self, b: ScalarLike) -> Scalar:
+        return EQ.apply(self, b)
+
+    def __gt__(self, b: ScalarLike) -> Scalar:
+        return LT.apply(b, self)
+
+    def log(self) -> Scalar:
+        """Computes the natural logarithm of the scalar."""
+        return Log.apply(self)
+
+    def exp(self) -> Scalar:
+        """Computes the exponential of the scalar."""
+        return Exp.apply(self)
+
+    def sigmoid(self) -> Scalar:
+        """Computes the sigmoid function of the scalar."""
+        return Sigmoid.apply(self)
+
+    def relu(self) -> Scalar:
+        """Computes the ReLU (Rectified Linear Unit) of the scalar."""
+        return ReLU.apply(self)
 
     # Variable elements for backprop
 
@@ -112,21 +149,28 @@ class Scalar:
         return self.history is not None and self.history.last_fn is None
 
     def is_constant(self) -> bool:
+        """Check if the scalar is constant (i.e., has no history)."""
         return self.history is None
 
     @property
     def parents(self) -> Iterable[Variable]:
-        """Get the variables used to create this one."""
+        """Return the parent variables of this scalar."""
         assert self.history is not None
         return self.history.inputs
 
     def chain_rule(self, d_output: Any) -> Iterable[Tuple[Variable, Any]]:
+        """Implement the chain_rule function in Scalar for functions of arbitrary arguments.
+        This function should be able to backward process a function by passing it in a context and
+        then collecting the local derivatives. It should then pair these with the right variables
+        and return them. This function is also where we filter out constants that were used on the forward pass,
+        but do not need derivatives.
+        """
         h = self.history
         assert h is not None
         assert h.last_fn is not None
         assert h.ctx is not None
-
-        raise NotImplementedError("Need to include this file from past assignment.")
+        x = h.last_fn._backward(h.ctx, d_output)
+        return zip(h.inputs, x)
 
     def backward(self, d_output: Optional[float] = None) -> None:
         """Calls autodiff to fill in the derivatives for the history of this object.
@@ -141,8 +185,6 @@ class Scalar:
             d_output = 1.0
         backpropagate(self, d_output)
 
-    raise NotImplementedError("Need to include this file from past assignment.")
-
 
 def derivative_check(f: Any, *scalars: Scalar) -> None:
     """Checks that autodiff works on a python function.
@@ -150,8 +192,10 @@ def derivative_check(f: Any, *scalars: Scalar) -> None:
 
     Parameters
     ----------
-        f : function from n-scalars to 1-scalar.
-        *scalars  : n input scalar values.
+    f : Any
+        Function from n-scalars to 1-scalar.
+    *scalars : Scalar
+        n input scalar values.
 
     """
     out = f(*scalars)
